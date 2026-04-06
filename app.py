@@ -149,7 +149,7 @@ def main():
 
     mode = st.sidebar.radio(
         "Select Mode",
-        ["Slider (Manual)", "Auto-play Animation"],
+        ["Auto-play Animation", "Slider (Manual)"],
         index=0,
     )
 
