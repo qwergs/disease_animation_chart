@@ -2,7 +2,7 @@
 EHEC Crude Incidence Rate — Animated Choropleth Map (South Korea, 2001–2024)
 
 Interactive Streamlit app visualizing annual crude incidence rates of
-Enterohemorrhagic E. coli (EHEC) infection at the sigungu (시군구) level.
+Enterohemorrhagic E. coli (EHEC) infection at the sigungu level.
 
 Data: Korea Disease Control and Prevention Agency (KDCA)
 """
@@ -28,34 +28,14 @@ st.set_page_config(
 )
 
 # ───────────────────────────────────────────
-# 한글 폰트 설정 (Streamlit Cloud에서는 NanumGothic 사용)
+# Font setup
 # ───────────────────────────────────────────
-import matplotlib.font_manager as fm
-import os
-
-# Streamlit Cloud에 NanumGothic이 있는지 확인, 없으면 설치 시도
-FONT_FOUND = False
-for font in fm.findSystemFonts():
-    if "NanumGothic" in font or "AppleGothic" in font or "Malgun" in font:
-        font_name = fm.FontProperties(fname=font).get_name()
-        plt.rcParams["font.family"] = font_name
-        FONT_FOUND = True
-        break
-
-if not FONT_FOUND:
-    # Streamlit Cloud (Ubuntu): apt로 설치된 나눔 폰트 사용
-    nanum_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-    if os.path.exists(nanum_path):
-        fm.fontManager.addfont(nanum_path)
-        plt.rcParams["font.family"] = fm.FontProperties(fname=nanum_path).get_name()
-    else:
-        plt.rcParams["font.family"] = "sans-serif"
-
+plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = False
 
 
 # ───────────────────────────────────────────
-# 색상 / 분류 유틸 (노트북 원본 로직)
+# Color / classification utils
 # ───────────────────────────────────────────
 def make_white_to_red_cmap(n_classes=6):
     reds = plt.get_cmap("Reds", n_classes)
@@ -64,7 +44,7 @@ def make_white_to_red_cmap(n_classes=6):
 
 
 def compute_bins(values, zero_eps=1e-9):
-    """전체 연도 crude_rate 기준 quintile bins 계산"""
+    """Compute quintile bins based on all years' crude_rate"""
     pos = values[np.isfinite(values) & (values > zero_eps)]
     if len(pos) == 0:
         return np.array([0, zero_eps, zero_eps*2, zero_eps*3,
@@ -82,7 +62,7 @@ def fmt_tick(x):
 
 
 # ───────────────────────────────────────────
-# 데이터 로딩 (캐시)
+# Data loading (cached)
 # ───────────────────────────────────────────
 @st.cache_data
 def load_data():
@@ -100,17 +80,15 @@ def load_geojson():
 
 
 # ───────────────────────────────────────────
-# 단일 연도 지도 렌더링
+# Map rendering (single year)
 # ───────────────────────────────────────────
 def render_map(gdf, df_year, year, edges, cmap, norm, value_col="crude_rate"):
     fig, ax = plt.subplots(1, 1, figsize=(10, 12))
 
-    # 지도 데이터 병합
     d = df_year[["region", value_col]].copy()
     d[value_col] = pd.to_numeric(d[value_col], errors="coerce")
     merged = gdf.merge(d, on="region", how="left")
 
-    # 지도 그리기
     merged.plot(
         ax=ax,
         column=value_col,
@@ -122,14 +100,14 @@ def render_map(gdf, df_year, year, edges, cmap, norm, value_col="crude_rate"):
     )
 
     ax.set_title(
-        f"EHEC 조발생률 (Crude Rate per 100,000) — {year}년",
+        f"EHEC Crude Incidence Rate (per 100,000) — {year}",
         fontsize=16,
         fontweight="bold",
         pad=12,
     )
     ax.axis("off")
 
-    # 컬러바
+    # Colorbar
     cax = fig.add_axes([0.88, 0.25, 0.025, 0.5])
     sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
@@ -143,41 +121,42 @@ def render_map(gdf, df_year, year, edges, cmap, norm, value_col="crude_rate"):
 
 
 # ───────────────────────────────────────────
-# 메인 앱
+# Main app
 # ───────────────────────────────────────────
 def main():
     st.title("🦠 EHEC Infection — Animated Choropleth Map")
     st.markdown(
-        "**Enterohemorrhagic *E. coli* (EHEC)** 감염증의 연간 조발생률을 "
-        "시군구 단위로 시각화합니다. (2001–2024, 대한민국)"
+        "Interactive visualization of annual crude incidence rates of "
+        "**Enterohemorrhagic *E. coli* (EHEC)** infection "
+        "at the district level in South Korea (2001–2024)."
     )
 
-    # 데이터 로딩
+    # Load data
     df = load_data()
     gdf = load_geojson()
 
     years = sorted(df["year"].unique())
     year_min, year_max = years[0], years[-1]
 
-    # 전체 연도 기준 색상 bins 계산 (고정 스케일)
+    # Compute fixed color bins across all years
     all_values = df["crude_rate"].values
     edges = compute_bins(all_values)
     cmap = make_white_to_red_cmap(n_classes=6)
     norm = mcolors.BoundaryNorm(edges, ncolors=cmap.N, clip=True)
 
-    # ── 사이드바 ──
+    # ── Sidebar ──
     st.sidebar.header("⚙️ Controls")
 
     mode = st.sidebar.radio(
-        "모드 선택",
-        ["슬라이더 (수동)", "자동 재생 애니메이션"],
+        "Select Mode",
+        ["Slider (Manual)", "Auto-play Animation"],
         index=0,
     )
 
-    if mode == "자동 재생 애니메이션":
-        speed = st.sidebar.slider("속도 (초/년)", 0.3, 3.0, 1.0, step=0.1)
+    if mode == "Auto-play Animation":
+        speed = st.sidebar.slider("Speed (sec/year)", 0.3, 3.0, 1.0, step=0.1)
 
-        if st.sidebar.button("▶ 재생 시작"):
+        if st.sidebar.button("▶ Start Playback"):
             chart_area = st.empty()
             info_area = st.empty()
             progress = st.progress(0)
@@ -193,61 +172,61 @@ def main():
                 region_name = max_row["region"]
                 max_rate = max_row["crude_rate"]
                 info_area.markdown(
-                    f"**{yr}년** — 총 {total_cases:,}건 | "
-                    f"최고: {region_name} ({max_rate:.4f}/100k)"
+                    f"**{yr}** — Total: {total_cases:,} cases | "
+                    f"Highest: {region_name} ({max_rate:.4f}/100k)"
                 )
                 progress.progress((idx + 1) / len(years))
                 time.sleep(speed)
 
-            st.sidebar.success("✅ 재생 완료!")
+            st.sidebar.success("✅ Playback complete!")
         else:
-            st.info("왼쪽 사이드바에서 '▶ 재생 시작' 버튼을 눌러주세요.")
+            st.info("Click '▶ Start Playback' in the sidebar to begin the animation.")
 
     else:
-        # 슬라이더 모드
+        # Slider mode
         selected_year = st.sidebar.slider(
-            "연도 선택", year_min, year_max, year_max, step=1
+            "Select Year", year_min, year_max, year_max, step=1
         )
 
         df_year = df[df["year"] == selected_year]
 
-        # 지도
+        # Map
         fig = render_map(gdf, df_year, selected_year, edges, cmap, norm)
         st.pyplot(fig)
         plt.close(fig)
 
-        # 요약 통계
+        # Summary statistics
         col1, col2, col3, col4 = st.columns(4)
         total_cases = int(df_year["yearly_cases"].sum())
         total_pop = df_year["pop"].sum()
         national_rate = (total_cases / total_pop * 100000) if total_pop > 0 else 0
         max_row = df_year.loc[df_year["crude_rate"].idxmax()]
 
-        col1.metric("총 발생건수", f"{total_cases:,}")
-        col2.metric("전국 조발생률", f"{national_rate:.4f}")
-        col3.metric("최고 지역", max_row["region"])
-        col4.metric("최고 발생률", f"{max_row['crude_rate']:.4f}")
+        col1.metric("Total Cases", f"{total_cases:,}")
+        col2.metric("National Crude Rate", f"{national_rate:.4f}")
+        col3.metric("Highest Region", max_row["region"])
+        col4.metric("Highest Rate", f"{max_row['crude_rate']:.4f}")
 
-        # 상위 10 테이블
-        st.subheader(f"📊 {selected_year}년 — 조발생률 상위 10개 시군구")
+        # Top 10 table
+        st.subheader(f"📊 {selected_year} — Top 10 Districts by Crude Rate")
         top10 = (
             df_year.nlargest(10, "crude_rate")[["region", "yearly_cases", "pop", "crude_rate"]]
             .rename(columns={
-                "region": "시군구",
-                "yearly_cases": "발생건수",
-                "pop": "인구",
-                "crude_rate": "조발생률",
+                "region": "District",
+                "yearly_cases": "Cases",
+                "pop": "Population",
+                "crude_rate": "Crude Rate",
             })
         )
         st.dataframe(
-            top10.style.format({"인구": "{:,.0f}", "조발생률": "{:.4f}"}),
+            top10.style.format({"Population": "{:,.0f}", "Crude Rate": "{:.4f}"}),
             use_container_width=True,
             hide_index=True,
         )
 
-    # 연도별 전국 추이 차트
+    # National trend chart
     st.markdown("---")
-    st.subheader("📈 전국 연간 추이")
+    st.subheader("📈 National Annual Trend")
 
     national = df.groupby("year").agg(
         cases=("yearly_cases", "sum"),
@@ -256,17 +235,17 @@ def main():
     national["crude_rate"] = national["cases"] / national["pop"] * 100000
 
     fig2, ax2 = plt.subplots(figsize=(12, 4))
-    ax2.bar(national["year"], national["cases"], color="#E74C3C", alpha=0.7, label="발생건수")
+    ax2.bar(national["year"], national["cases"], color="#E74C3C", alpha=0.7, label="Cases")
     ax2.set_xlabel("Year")
     ax2.set_ylabel("Cases", color="#E74C3C")
     ax2.tick_params(axis="y", labelcolor="#E74C3C")
 
     ax2b = ax2.twinx()
-    ax2b.plot(national["year"], national["crude_rate"], "o-", color="#2C3E50", linewidth=2, label="조발생률")
+    ax2b.plot(national["year"], national["crude_rate"], "o-", color="#2C3E50", linewidth=2, label="Crude Rate")
     ax2b.set_ylabel("Crude Rate (per 100,000)", color="#2C3E50")
     ax2b.tick_params(axis="y", labelcolor="#2C3E50")
 
-    ax2.set_title("EHEC 전국 연간 발생 추이 (2001–2024)")
+    ax2.set_title("EHEC National Annual Incidence Trend (2001–2024)")
     fig2.tight_layout()
     st.pyplot(fig2)
     plt.close(fig2)
